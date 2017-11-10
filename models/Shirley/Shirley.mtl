@@ -1,0 +1,17 @@
+newmtl sheep_fat
+Ka 0.5647059 0.5647059 0.5647059
+Kd 0.5647059 0.5647059 0.5647059
+illum 1
+d 1
+Tr 0
+map_Ka sheep_fat.png
+map_Kd sheep_fat.png
+map_d sheep_fat.png
+newmtl sheep_fat_1
+Ka 0.5647059 0.5647059 0.5647059
+Kd 0.5647059 0.5647059 0.5647059
+d 1
+Tr 0
+map_Ka sheep_fat_1.png
+map_Kd sheep_fat_1.png
+map_d sheep_fat_1.png

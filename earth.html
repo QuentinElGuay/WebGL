@@ -1,0 +1,222 @@
+<!DOCTYPE HTML>
+<html lang="en">
+	<head>
+		<title>Traveling the Earth - a 3D experimentation</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0"/>
+		<style type="text/css">
+			body {
+				font-family: Monospace;
+				background-color: #f0f0f0;
+				margin: 0px;
+				overflow: hidden;
+			}
+		</style>
+	</head>
+	<body>
+
+		<div id="container"></div>
+		<script type="text/javascript" src="js/utils.js"></script>
+		<script src="http://mrdoob.github.com/three.js/build/three.min.js"></script>
+		<script type="text/javascript" src="js/OrbitControls.js"></script>
+		<script type="text/javascript" src='js/dat.gui.min.js'></script>
+		<script type="text/javascript" src='js/OBJLoader.js'></script>
+		<script type="text/javascript" src='js/MTLLoader.js'></script>
+		<script src="js/DDSLoader.js"></script>
+		
+		<script type="text/javascript">
+			var renderer;
+			var scene, camera, light;
+			var earthGroup, sky, moon;
+			var clock = new THREE.Clock();
+			var rpm = 1;			
+			const rad = 5;
+			
+			// Initialize scene
+			init();
+			
+			function init()
+			{
+				//initialize renderer
+				renderer = new THREE.WebGLRenderer();
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				// add renderer to document
+				document.getElementById('container').appendChild(renderer.domElement);
+				
+				// init texture loader				
+				var loader = new THREE.TextureLoader();
+				
+				//create new scene
+				scene = new THREE.Scene();
+				
+				//initialize camera: vertical field of view, aspect ratio, near plane, far plane.
+				camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 10000)
+				camera.position.set(0,0,200);
+				camera.position.z = 10;
+				scene.add(camera);
+				
+				//light 
+				light = new THREE.AmbientLight(0x888888);
+				//scene.add(light);
+				light = new THREE.DirectionalLight( 0xcccccc, 1 )
+				light.position.set(5,3,5)
+				scene.add( light )
+				
+				// add Earth to the scene
+				earthGroup = new THREE.Group();
+				scene.add(earthGroup);
+				geometry = new THREE.SphereGeometry(rad, 32, 32);
+				// load some textures
+				var bump = loader.load("images/earthbump1k.jpg");
+				specular = loader.load("images/earthspec1k.jpg");
+				var texture = loader.load("images/earthmap1k.jpg",
+					function ( texture ) {
+						// do something with the texture
+							material = new THREE.MeshPhongMaterial( {
+							map: texture,
+							bumpMap: bump,
+							specularMap: specular
+						 } );
+						var earthMesh = new THREE.Mesh(geometry, material);
+						var axisHelper = new THREE.AxisHelper(10);
+						axisHelper.visible=false;
+						earthMesh.add(axisHelper);
+						earthGroup.add(earthMesh);
+						animate();
+					},
+					// Function called when download progresses
+					function ( xhr ) {
+						console.log( (xhr.loaded / xhr.total * 100) + '% loaded' );
+					},
+					// Function called when download errors
+					function ( xhr ) {
+						console.log( 'An error happened' );
+					});
+				
+				// add the Moon
+				moonGeometry = new THREE.SphereGeometry(1.36, 32, 32);
+				var moonTexture = loader.load("images/moonmap1k.jpg");
+				var moonBump = loader.load("images/moonbump1k.jpg");
+				material = new THREE.MeshPhongMaterial( { map: moonTexture, bumpMap: moonBump } );
+				moon = new THREE.Mesh(moonGeometry, material);
+				moon.position.x = 130;
+				scene.add(moon);
+				
+				// create the sky 
+				var skyGeometry = new THREE.SphereGeometry(150, 32, 32);
+				material = new THREE.MeshBasicMaterial();
+				material.map = loader.load("images/galaxy_starfield.png");
+				material.side = THREE.BackSide;
+				sky = new THREE.Mesh(skyGeometry, material);
+				scene.add(sky);
+
+				// Add OrbitControls
+				controls = new THREE.OrbitControls( camera, renderer.domElement );
+				
+				// Add cities
+				loadJSONFile('cities.json', addCities)
+								
+				// init panel
+				initPanel();
+			}
+			
+			/* Rendering function */
+			function animate()
+			{
+				requestAnimationFrame( animate );
+				var delta = clock.getDelta();
+				earthGroup.rotation.y += ((delta * rpm * 2 * Math.PI) / 60);
+				sky.rotation.y -= 0.0002;
+				renderer.render( scene, camera );
+			}
+			
+			function computeSpatialCordinates(latitude, longitude)
+			{
+				latitude = latitude * Math.PI / 180;
+				longitude = -longitude * Math.PI / 180;
+				var x= rad * Math.cos(latitude) * Math.cos(longitude);
+				var y= rad * Math.cos(latitude) * Math.sin(longitude);
+				var z= rad * Math.sin(latitude);
+				return new THREE.Vector3( x, y, z );
+			}
+			
+			function addCity(city, latitude, longitude)
+			{
+				var vector = computeSpatialCordinates(latitude, longitude);
+				city.position.x= vector.x;
+				city.position.y= vector.z;
+				city.position.z= vector.y;
+				return city;
+			}
+			
+			function addCities(cities)
+			{  			
+				// smoothCities(cities, 70);
+				
+				var geometry = new THREE.SphereGeometry(0.05, 32, 32);
+				var material = new THREE.MeshBasicMaterial({ color: 0xFF0000 });
+				var city = new THREE.Mesh(geometry, material);
+				var cityGroup = new THREE.Group();
+				cityGroup.name='cities';
+				earthGroup.add(cityGroup);
+				
+				for (var i = 0; i < cities.length; i++)
+				{
+					if(cities[i].name!="") cityGroup.add(addCity(city.clone(), cities[i].latitude, cities[i].longitude));
+				}
+			}
+			
+			function initPanel()
+			{
+				var obj = {
+					displayPoints: true,
+					nbPoints: 70,
+					color: 0xFF0000,
+					rpm: rpm,
+					axisHelpers: false
+				};
+				var gui = new dat.gui.GUI();
+				gui.remember(obj);
+				
+				var f1 = gui.addFolder('Cities');
+				f1.add(obj, 'displayPoints').name('Display points').onFinishChange(function(value) {
+					for(var i = 0; i < earthGroup.children.length; i++)
+					{
+						if(earthGroup.children[i].name=="cities") earthGroup.children[i].visible = value;
+					}
+				});
+					
+				// f1.add(obj, 'nbPoints').min(0).max(100).step(1).name('Max.point number');
+				f1.addColor(obj, 'color').name('Points color').onFinishChange(function(value) {
+					city.material.color.setHex(value);
+				});
+				
+				var f2 = gui.addFolder('Animation');
+				f2.add(obj, 'rpm').name('Rotation/min').min(0).max(10).step(1).onFinishChange(function(value) {
+					rpm=value;
+				});
+				
+				var f3 = gui.addFolder('Debug');
+				f3.add(obj, 'axisHelpers').name('Display axis').onFinishChange(function(value) {
+					displayHelpers(value);
+				});
+			}
+			
+			window.addEventListener('resize', function () { // more: http://www.rioki.org/2015/04/19/threejs-resize-and-canvas.html
+			  renderer.setSize(window.innerWidth, window.innerHeight);
+			  camera.aspect = window.innerWidth / window.innerHeight;
+			  camera.updateProjectionMatrix();
+			});
+
+			function displayHelpers(bool)
+			{
+				scene.traverse( function(child)
+				{
+					if(child instanceof THREE.AxisHelper) child.visible=bool;
+				});
+			}
+
+		</script>
+
+	</body>
+</html>

@@ -1,0 +1,287 @@
+<!DOCTYPE HTML>
+<html lang="en">
+	<head>
+		<title>Traveling the Earth - a 3D experimentation</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0"/>
+		<style type="text/css">
+			body {
+				font-family: Monospace;
+				background-color: #f0f0f0;
+				margin: 0px;
+				overflow: hidden;
+			}
+		</style>
+	</head>
+	<body>
+
+		<div id="container"></div>
+		<!-- Import models -->
+		<script type="text/javascript" src="js/objects/Element.js"></script>
+		<script type="text/javascript" src="js/objects/Sheep.js"></script>
+		<script type="text/javascript" src="js/objects/Spaceship.js"></script>
+		<!-- Import libraries -->
+		<script src="http://mrdoob.github.com/three.js/build/three.min.js"></script>
+		<script type="text/javascript" src='js/dat.gui.min.js'></script>
+		<script type="text/javascript" src='js/threex.keyboardstate.js'></script>
+		<script type="text/javascript" src='js/MTLLoader.js'></script>
+		<script type="text/javascript" src='js/OBJLoader.js'></script>
+		<script type="text/javascript" src="js/OrbitControls.js"></script>
+		<script type="text/javascript" src="js/utils.js"></script>
+		
+		<script type="text/javascript">
+			var renderer, scene, camera;
+			var loader, mtlLoader, objLoader;
+			var clock = new THREE.Clock();
+			const fieldDimensions = 100;
+			const radShip = 5;
+			var keyboard;
+			var updateFcts;
+			var spaceship;
+			var sheeps = [];
+			
+			init();
+			
+			function init()
+			{
+				//initialize renderer
+				renderer = new THREE.WebGLRenderer();
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				// add renderer to document
+				document.getElementById('container').appendChild(renderer.domElement);
+				
+				// init keyboard
+				initKeyboard();
+				
+				// init loaders		
+				mtlLoader = new THREE.MTLLoader();
+				loader = new THREE.TextureLoader();
+				objLoader = new THREE.OBJLoader();
+				
+				//create new scene
+				scene = new THREE.Scene();
+				
+				//initialize camera: vertical field of view, aspect ratio, near plane, far plane.
+				camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 10000)
+				camera.position.set(0,7,7);
+				camera.lookAt(new THREE.Vector3( 0, 2, 0 ));
+				scene.add(camera);
+				
+				//light 
+				light = new THREE.AmbientLight(0xFFFFFF);
+				scene.add(light);
+				light = new THREE.DirectionalLight( 0xcccccc, 0.5 )
+				light.position.set(10,10,0)
+				scene.add( light );
+				
+				// ground	
+				loader.load("textures/grass.png", function ( texture )
+				{
+					texture.wrapS = THREE.RepeatWrapping;
+					texture.wrapT = THREE.RepeatWrapping;
+					texture.repeat.set( 20, 20 );
+					var material = new THREE.MeshPhongMaterial( {
+						map: texture
+					} );
+					
+					var geometry = new THREE.PlaneGeometry( fieldDimensions, fieldDimensions, 32 );
+					var plane = new THREE.Mesh( geometry, material );
+					plane.rotation.x-=Math.PI/2;
+					var axisHelper = new THREE.AxisHelper(10);
+					axisHelper.visible=false;
+					plane.add(axisHelper);
+					plane.name="ground";
+					scene.add( plane );
+				},
+				// Function called when download progresses
+				function ( xhr ) {
+					console.log( (xhr.loaded / xhr.total * 100) + '% loaded' );
+				},
+				// Function called when download errors
+				function ( xhr ) {
+					console.log( 'An error happened' );
+				});
+
+				// Add OrbitControls
+				//controls = new THREE.OrbitControls( camera, renderer.domElement );
+				
+				spaceship = new SpaceShip(0,radShip,0);
+				spaceship.addToScene(scene);
+				
+				var elem = new Element(0, 0, 5);
+				elem.addToScene(scene);
+				
+				generateSheeps(20);
+
+				displaySkyBox();
+				
+				animate();
+			}
+			
+			function animate()
+			{
+				requestAnimationFrame( animate );
+				var delta = clock.getDelta();
+				spaceship.animate(delta);
+				
+				for(var i = 0; i < sheeps.length; i++)
+				{
+					spaceship.kidnap(sheeps[i]);
+					sheeps[i].animate(delta);
+				}
+				
+				// call each update function
+				updateFcts.forEach(function(updateFn){
+					updateFn(delta)
+				})
+
+				renderer.render( scene, camera );
+			}
+					
+			function initPanel()
+			{
+				var obj = {
+					displayPoints: true,
+					nbPoints: 70,
+					color: 0xFF0000,
+					rpm: rpm,
+					axisHelpers: false
+				};
+				var gui = new dat.gui.GUI();
+				gui.remember(obj);
+				
+				var f1 = gui.addFolder('Cities');
+				f1.add(obj, 'displayPoints').name('Display points').onFinishChange(function(value) {
+					for(var i = 0; i < earthGroup.children.length; i++)
+					{
+						if(earthGroup.children[i].name=="cities") earthGroup.children[i].visible = value;
+					}
+				});
+					
+				// f1.add(obj, 'nbPoints').min(0).max(100).step(1).name('Max.point number');
+				f1.addColor(obj, 'color').name('Points color').onFinishChange(function(value) {
+					city.material.color.setHex(value);
+				});
+				
+				var f2 = gui.addFolder('Animation');
+				f2.add(obj, 'rpm').name('Rotation/min').min(0).max(10).step(1).onFinishChange(function(value) {
+					rpm=value;
+				});
+				
+				var f3 = gui.addFolder('Debug');
+				f3.add(obj, 'axisHelpers').name('Display axis').onFinishChange(function(value) {
+					displayHelpers(value);
+				});
+			}
+			
+			window.addEventListener('resize', function () { // more: http://www.rioki.org/2015/04/19/threejs-resize-and-canvas.html
+			  renderer.setSize(window.innerWidth, window.innerHeight);
+			  camera.aspect = window.innerWidth / window.innerHeight;
+			  camera.updateProjectionMatrix();
+			});
+			
+			function loadObject(path, modelName, name, scale = 1)
+			{
+				var mtlLoader2 = new THREE.MTLLoader();
+				mtlLoader2.setPath( path );
+				mtlLoader2.load(modelName+'.mtl', function( material ) 
+				{
+					material.preload();
+					var objLoader2 = new THREE.OBJLoader();
+					objLoader2.setPath( path );
+					objLoader2.setMaterials( material );
+					material.side = THREE.BackSide;
+					objLoader2.load( modelName+'.obj', function ( mesh ) 
+					{
+						mesh.name=name;
+						var axisHelper = new THREE.AxisHelper(1);
+						axisHelper.visible=true;
+						mesh.add(axisHelper);
+						scene.add( mesh );	
+						mesh.position.x = 0;//(Math.random() - 0.5) * fieldDimensions * 0.9;
+						mesh.position.z = 0;//(Math.random() - 0.5) * fieldDimensions * 0.9;
+						mesh.rotation.y = Math.random() * 2 * Math.PI;
+						mesh.scale.set(scale, scale, scale);
+						var box = new THREE.Box3().setFromObject( mesh );
+					});					
+				});
+			}
+			
+			function displayHelpers(bool)
+			{
+				scene.traverse( function(child)
+				{
+					if(child instanceof THREE.AxisHelper) child.visible=bool;
+				});
+			}
+			
+			function displaySkyBox()
+			{
+				var materials = [
+					
+					new THREE.MeshBasicMaterial( { map: new THREE.TextureLoader().load( './skybox/front.jpg' ), side: THREE.DoubleSide } ),
+					new THREE.MeshBasicMaterial( { map: new THREE.TextureLoader().load( './skybox/back.jpg' ), side: THREE.DoubleSide } ),
+					new THREE.MeshBasicMaterial( { map: new THREE.TextureLoader().load( './skybox/top.jpg' ), side: THREE.DoubleSide } ),
+					new THREE.MeshBasicMaterial( { map: new THREE.TextureLoader().load( './skybox/bottom.jpg' ), side: THREE.DoubleSide } ),
+					new THREE.MeshBasicMaterial( { map: new THREE.TextureLoader().load( './skybox/left.jpg' ), side: THREE.DoubleSide } ),
+					new THREE.MeshBasicMaterial( { map: new THREE.TextureLoader().load( './skybox/right.jpg' ), side: THREE.DoubleSide } )
+				];
+				var cubeMaterials  = new THREE.MeshFaceMaterial ( materials );
+
+				var geometry = new THREE.CubeGeometry( 1000, 1000, 1000 );
+				var boxMesh = new THREE.Mesh( geometry, cubeMaterials );
+				
+				scene.add(boxMesh);
+			}
+			
+			function initKeyboard()
+			{
+				updateFcts	= [];
+				var keyboard = new THREEx.KeyboardState(renderer.domElement);
+				renderer.domElement.setAttribute("tabIndex", "0");
+				renderer.domElement.focus();
+				
+				updateFcts.push(function(delta){
+					if( keyboard.pressed('left') )
+					{ 
+						spaceship.moveX(-delta*5); 
+						camera.position.x-=(delta*5);
+					}		
+					else if( keyboard.pressed('right') )
+					{
+						spaceship.moveX(delta*5); 
+						camera.position.x+=(delta*5);
+					}
+					if( keyboard.pressed('down') )
+					{ 
+						spaceship.moveZ(delta*5);
+						camera.position.z+=(delta*5); 
+					}		
+					else if( keyboard.pressed('up') ){
+						spaceship.moveZ(-delta*5);
+						camera.position.z-=(delta*5);
+					};
+				})
+				// only on keydown
+				keyboard.domElement.addEventListener('keydown', function(event)
+				{
+					if( keyboard.eventMatches(event, 'space') ) spaceship.changeRayStatus();
+				})		
+			}
+			
+			function generateSheeps( nbSheeps )
+			{			
+				for(var i = 0; i < nbSheeps; i++)
+				{
+					var x = (Math.random() - 0.5) * fieldDimensions * 0.9;
+					var z = (Math.random() - 0.5) * fieldDimensions * 0.9;
+					var sheep = new Sheep(x, 0, z, "sheep_"+i);
+					sheep.addToScene(scene);
+					sheeps.push(sheep);
+				}
+			}
+
+		</script>
+
+	</body>
+</html>
